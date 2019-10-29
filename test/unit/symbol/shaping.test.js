@@ -2,7 +2,8 @@ import {test} from '../../util/test';
 import fs from 'fs';
 import path from 'path';
 import * as shaping from '../../../src/symbol/shaping';
-import Formatted from '../../../src/style-spec/expression/types/formatted';
+import Formatted, {FormattedSection} from '../../../src/style-spec/expression/types/formatted';
+import ResolvedImage from '../../../src/style-spec/expression/types/resolved_image';
 import {ImagePosition} from '../../../src/render/image_atlas';
 const WritingMode = shaping.WritingMode;
 
@@ -19,7 +20,17 @@ test('shaping', (t) => {
     };
 
     const images = {
-        // TODO: add image in label shaping tests.
+        'square': new ImagePosition({x: 0, y: 0, w: 16, h: 16}, {pixelRatio: 1, version: 1}),
+        'tall': new ImagePosition({x: 0, y: 0, w: 16, h: 32}, {pixelRatio: 1, version: 1}),
+        'wide': new ImagePosition({x: 0, y: 0, w: 32, h: 16}, {pixelRatio: 1, version: 1}),
+    };
+
+    const sectionForImage = (name) => {
+        return new FormattedSection('', ResolvedImage.fromString(name), null, null, null);
+    };
+
+    const sectionForText = (name, scale) => {
+        return new FormattedSection(name, null, scale, null, null);
     };
 
     let shaped;
@@ -79,6 +90,47 @@ test('shaping', (t) => {
     shaped = shaping.shapeText(Formatted.fromString('   foo bar\n'), glyphs, images, fontStack, 15 * oneEm, oneEm, 'center', 'center', 0 * oneEm, [0, 0], WritingMode.horizontal, false, 'point');
     const shaped2 = shaping.shapeText(Formatted.fromString('foo bar'), glyphs, images, fontStack, 15 * oneEm, oneEm, 'center', 'center', 0 * oneEm, [0, 0], WritingMode.horizontal, false, 'point');
     t.same(shaped.positionedLines, shaped2.positionedLines);
+
+    t.test('basic image shaping', (t) => {
+        const shaped = shaping.shapeText(new Formatted([sectionForImage('square')]), glyphs, images, fontStack, 5 * oneEm, oneEm, 'center', 'center', 0, [0, 0], WritingMode.horizontal, false, 'point');
+        t.same(shaped.top, -12);    // 1em line height
+        t.same(shaped.left, -10.5); // 16 - 2px border * 1.5 scale factor
+        t.end();
+    });
+
+    t.test('images in horizontal layout', (t) => {
+        const expectedImagesHorizontal = JSON.parse(fs.readFileSync(path.join(__dirname, '/../../expected/text-shaping-images-horizontal.json')));
+        const horizontalFormatted = new Formatted([
+            sectionForText('Foo'),
+            sectionForImage('square'),
+            sectionForImage('wide'),
+            sectionForText('\n'),
+            sectionForImage('tall'),
+            sectionForImage('square'),
+            sectionForText(' bar'),
+        ]);
+        const shaped = shaping.shapeText(horizontalFormatted, glyphs, images, fontStack, 5 * oneEm, oneEm, 'center', 'center', 0, [0, 0], WritingMode.horizontal, false, 'point');
+        if (UPDATE) fs.writeFileSync(path.join(__dirname, '/../../expected/text-shaping-images-horizontal.json'), JSON.stringify(shaped, null, 2));
+        t.deepEqual(shaped, expectedImagesHorizontal);
+        t.end();
+    });
+
+    t.test('images in vertical layout', (t) => {
+        const expectedImagesVertical = JSON.parse(fs.readFileSync(path.join(__dirname, '/../../expected/text-shaping-images-vertical.json')));
+        const horizontalFormatted = new Formatted([
+            sectionForText('三'),
+            sectionForImage('square'),
+            sectionForImage('wide'),
+            sectionForText('\u200b'),
+            sectionForImage('tall'),
+            sectionForImage('square'),
+            sectionForText('三'),
+        ]);
+        const shaped = shaping.shapeText(horizontalFormatted, glyphs, images, fontStack, 5 * oneEm, oneEm, 'center', 'center', 0, [0, 0], WritingMode.vertical, true, 'point');
+        if (UPDATE) fs.writeFileSync(path.join(__dirname, '/../../expected/text-shaping-images-vertical.json'), JSON.stringify(shaped, null, 2));
+        t.deepEqual(shaped, expectedImagesVertical);
+        t.end();
+    });
 
     t.end();
 });
